@@ -38,3 +38,18 @@ folders for test types a given project doesn't have.
   hardcoded environment values in steps or page objects.
 - `steps/bdd.ts`, `steps/fixtures.ts`, `steps/world.ts` are shared wiring; see
   `playwright-bdd-style.md` for what each one is for.
+
+## Branches & environments
+
+Two long-lived branches, each tied to its own GitHub Environment (Settings >
+Environments), so `BASE_URL`/`API_BASE_URL`/`USER_EMAIL`/`USER_PASSWORD` can
+differ per environment without touching the workflow:
+
+- `main` → **test** environment. Gets the latest changes first.
+- `acceptance` → **acceptance** environment. Promoted from `main` once
+  something has proven out on test — merge `main` into `acceptance` to
+  promote (never the other way around).
+
+`.github/workflows/ci.yml` picks the right environment automatically from
+the branch being pushed to (or, for a PR, the branch it targets) — no
+separate workflow file per environment.

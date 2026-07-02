@@ -1,14 +1,23 @@
 name: CI
 
+# main -> the "test" environment (latest changes); acceptance -> the
+# "acceptance" environment (promoted from main once it's proven on test).
+# See ai/repo-structure.md for the branch/environment model.
 on:
   push:
-    branches: [main]
+    branches: [main, acceptance]
   pull_request:
-    branches: [main]
+    branches: [main, acceptance]
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    # PRs target a branch without being on it yet, so base_ref is what
+    # picks the environment there; push events use ref_name directly.
+    # (GitHub Actions expressions have no ternary, so this is the &&/||
+    # idiom: pick base_ref or ref_name depending on event type, then map
+    # 'acceptance' -> 'acceptance', anything else -> 'test'.)
+    environment: "${{ (github.event_name == 'pull_request' && github.base_ref || github.ref_name) == 'acceptance' && 'acceptance' || 'test' }}"
     steps:
       - uses: actions/checkout@v4
 
@@ -27,8 +36,9 @@ jobs:
 
       # BASE_URL / API_BASE_URL / USER_EMAIL / USER_PASSWORD fall back to the
       # demo defaults in config/project.config.ts when unset. Set the real
-      # values as repository secrets (Settings > Secrets and variables >
-      # Actions) so this job can pick them up.
+      # values per environment (Settings > Environments > test / acceptance
+      # > Environment secrets) — this job's `environment:` above picks
+      # which set applies.
       - run: npm run bdd
         env:
           BASE_URL: ${{ secrets.BASE_URL }}
