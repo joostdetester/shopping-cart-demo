@@ -59,3 +59,13 @@ version: 1.0
   totals check the displayed value, not a locally recomputed sum.
 - Because the cart is one shared, real resource per account, `playwright.config.ts`
   runs with `workers: 1` to avoid two scenarios racing on the same cart.
+- The `test` and `acceptance` GitHub Environments (see `ai/repo-structure.md`)
+  currently point at the *same* SUT account, since this demo only has one
+  real backend to test against. If `main` and `acceptance` CI runs happen to
+  overlap, they can race on that shared cart the same way two local workers
+  would — this is what caused a one-off `checkout` timeout on `main` right
+  after the `acceptance` branch was introduced; a rerun in isolation passed.
+  Not a code bug, and not a flaw in the test/acceptance split itself — a
+  real client setup with genuinely separate test and acceptance systems
+  wouldn't hit this, since the two environments would no longer share one
+  backend/account.
