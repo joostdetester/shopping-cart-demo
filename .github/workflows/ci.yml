@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      # npm install, not npm ci: this project may not have a committed
+      # package-lock.json (the install step at scaffold time is optional),
+      # and npm ci hard-requires one.
+      - run: npm install
+
+      - run: npx playwright install --with-deps
+
+      - run: npm run lint
+
+      # BASE_URL / API_BASE_URL fall back to the demo defaults in
+      # config/project.config.ts when unset. For a real system under test,
+      # set them as repository variables/secrets (Settings > Secrets and
+      # variables > Actions) instead of hardcoding them here.
+      - run: npm run bdd
