@@ -25,8 +25,13 @@ jobs:
 
       - run: npm run lint
 
-      # BASE_URL / API_BASE_URL fall back to the demo defaults in
-      # config/project.config.ts when unset. For a real system under test,
-      # set them as repository variables/secrets (Settings > Secrets and
-      # variables > Actions) instead of hardcoding them here.
+      # BASE_URL / API_BASE_URL / USER_EMAIL / USER_PASSWORD fall back to the
+      # demo defaults in config/project.config.ts when unset. Set the real
+      # values as repository secrets (Settings > Secrets and variables >
+      # Actions) so this job can pick them up.
       - run: npm run bdd
+        env:
+          BASE_URL: ${{ secrets.BASE_URL }}
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          USER_EMAIL: ${{ secrets.USER_EMAIL }}
+          USER_PASSWORD: ${{ secrets.USER_PASSWORD }}
