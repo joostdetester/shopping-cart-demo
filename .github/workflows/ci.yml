@@ -43,10 +43,23 @@ jobs:
   # no point spending browser-install + test time on code that fails the
   # cheap static checks first. `needs:` already skips this job on failure,
   # no extra `if:` needed.
+  #
+  # Accessibility also needs `playwright` to finish first (rather than
+  # running in parallel with it): both jobs log into the same real,
+  # shared-per-account backend and mutate its cart (see
+  # ai/project-context.md), same reason playwright.config.ts pins
+  # `workers: 1` - that only serializes tests *within* one job, not across
+  # two jobs on separate runners. Running them at the same time raced both
+  # jobs against the same account's cart state.
   accessibility:
     name: Accessibility
     runs-on: ubuntu-latest
-    needs: [lint, typecheck]
+    needs: [lint, typecheck, playwright]
+    # Still run even if `playwright` failed - only its *timing* matters
+    # here (see above), not its outcome. `lint`/`typecheck` failing should
+    # still skip this job, so check those explicitly rather than a bare
+    # always().
+    if: always() && needs.lint.result == 'success' && needs.typecheck.result == 'success'
     # PRs target a branch without being on it yet, so base_ref is what
     # picks the environment there; push events use ref_name directly.
     # (GitHub Actions expressions have no ternary, so this is the &&/||
