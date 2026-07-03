@@ -249,9 +249,18 @@ jobs:
           for RUN_ID in $(gh run list -R "$GITHUB_REPOSITORY" --branch "$OTHER" --workflow ci.yml --limit 5 --json databaseId --jq '.[].databaseId'); do
             CONCLUSION=$(gh run view "$RUN_ID" -R "$GITHUB_REPOSITORY" --json jobs --jq '.jobs[] | select(.name=="Test Summary") | .conclusion')
             if [ "$CONCLUSION" = "success" ]; then
-              mkdir -p /tmp/other-artifact "site/$OTHER"
+              mkdir -p /tmp/other-artifact /tmp/other-extracted
               gh run download "$RUN_ID" -R "$GITHUB_REPOSITORY" -n github-pages -D /tmp/other-artifact
-              tar -xf /tmp/other-artifact/artifact.tar -C "site/$OTHER"
+              # That previous deploy's artifact is the whole site (its own
+              # subpath plus whatever else was live then), not just its own
+              # report - pull out only its "$OTHER/" subdirectory, or a
+              # naive extract-in-place would nest it one level too deep
+              # (site/$OTHER/$OTHER/... instead of site/$OTHER/...).
+              tar -xf /tmp/other-artifact/artifact.tar -C /tmp/other-extracted
+              if [ -d "/tmp/other-extracted/$OTHER" ]; then
+                rm -rf "site/$OTHER"
+                cp -r "/tmp/other-extracted/$OTHER" "site/$OTHER"
+              fi
               break
             fi
           done

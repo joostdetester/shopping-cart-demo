@@ -50,6 +50,14 @@ differ per environment without touching the workflow:
   something has proven out on test — merge `main` into `acceptance` to
   promote (never the other way around).
 
+Promote with a real merge commit, not a fast-forward:
+`git checkout acceptance && git merge --no-ff main`. GitHub Pages tracks
+its deployments by commit SHA — a fast-forward leaves `acceptance` on the
+exact same SHA `main` already deployed, and Pages silently skips rebuilding
+the site for a SHA it's already seen, so the Test Summary job's Allure
+report update goes missing even though the job itself reports success.
+`--no-ff` guarantees `acceptance` always gets its own SHA.
+
 `.github/workflows/ci.yml` picks the right environment automatically from
 the branch being pushed to (or, for a PR, the branch it targets) — no
 separate workflow file per environment.
