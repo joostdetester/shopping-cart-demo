@@ -3,7 +3,7 @@ title: Accessibility Testing
 description: Three-level (A/AA/AAA), severity-gated accessibility testing approach for this project's Playwright BDD UI suite.
 owner: team-qa
 tags: [testing, accessibility, ui, axe]
-version: 3.0
+version: 4.0
 ---
 
 # Accessibility Testing
@@ -90,6 +90,25 @@ Major/Minor/Cosmetic findings):
   `!important` rules (frequently the very anti-pattern axe is flagging),
   which silently wins over an inline style regardless of `!important`. A
   freshly appended overlay has no competing rules to lose to.
+
+## Standalone HTML report
+Besides the per-scenario Allure attachments above, `scanAccessibility` also
+writes one JSON record per scan (page name, level, URL, technical violation
+detail, screenshot filename) to `a11y-report-data/`. Run
+`npm run a11y:report` (after `npm run test:a11y`) to aggregate every record
+across all pages and all three WCAG levels into one standalone,
+dependency-free HTML file at `a11y-report/index.html` — open it directly in
+a browser, no Allure needed. Its layout: an overall summary card, then one
+section per WCAG level, each with its own per-page cards showing the
+red-boxed screenshot (see Reporting above) and every violation's technical
+detail.
+
+`scripts/build-a11y-report.mjs` does the aggregation — plain Node, no
+template engine or extra dependency, so it's easy to adjust the layout
+directly in that file. CI builds this report in the `accessibility` job
+(`npm run a11y:report`, uploaded as the `a11y-report` artifact) and the
+`test-summary` job publishes it to GitHub Pages under this branch's own
+`a11y-report/` subpath, alongside the Allure report.
 
 ## Tags
 - Use `@accessibility` and `@a11y` on dedicated accessibility scenarios.
