@@ -10,8 +10,43 @@ on:
     branches: [main, acceptance]
 
 jobs:
-  test:
+  lint:
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      # npm install, not npm ci: this project may not have a committed
+      # package-lock.json (the install step at scaffold time is optional),
+      # and npm ci hard-requires one.
+      - run: npm install
+
+      - run: npm run lint
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - run: npm install
+
+      - run: npm run typecheck
+
+  # Playwright and Accessibility only start once lint+typecheck are green —
+  # no point spending browser-install + test time on code that fails the
+  # cheap static checks first. `needs:` already skips this job on failure,
+  # no extra `if:` needed.
+  accessibility:
+    name: Accessibility
+    runs-on: ubuntu-latest
+    needs: [lint, typecheck]
     # PRs target a branch without being on it yet, so base_ref is what
     # picks the environment there; push events use ref_name directly.
     # (GitHub Actions expressions have no ternary, so this is the &&/||
@@ -25,21 +60,42 @@ jobs:
         with:
           node-version-file: '.nvmrc'
 
-      # npm install, not npm ci: this project may not have a committed
-      # package-lock.json (the install step at scaffold time is optional),
-      # and npm ci hard-requires one.
       - run: npm install
 
       - run: npx playwright install --with-deps
 
-      - run: npm run lint
-
       # BASE_URL / API_BASE_URL / USER_EMAIL / USER_PASSWORD fall back to the
       # demo defaults in config/project.config.ts when unset. Set the real
       # values per environment (Settings > Environments > test / acceptance
-      # > Environment secrets) — this job's `environment:` above picks
-      # which set applies.
-      - run: npm run bdd
+      # > Environment secrets) — this job's `environment:` above picks which
+      # set applies. Runs only the @accessibility-tagged scenarios — see
+      # ai/accessibility-testing.md.
+      - run: npm run test:a11y
+        env:
+          BASE_URL: ${{ secrets.BASE_URL }}
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          USER_EMAIL: ${{ secrets.USER_EMAIL }}
+          USER_PASSWORD: ${{ secrets.USER_PASSWORD }}
+
+  playwright:
+    name: Playwright
+    runs-on: ubuntu-latest
+    needs: [lint, typecheck]
+    environment: "${{ (github.event_name == 'pull_request' && github.base_ref || github.ref_name) == 'acceptance' && 'acceptance' || 'test' }}"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - run: npm install
+
+      - run: npx playwright install --with-deps
+
+      # Runs everything except @accessibility (that's the dedicated
+      # Accessibility job above) — see ai/testing-guidelines.md.
+      - run: npm run test:e2e
         env:
           BASE_URL: ${{ secrets.BASE_URL }}
           API_BASE_URL: ${{ secrets.API_BASE_URL }}

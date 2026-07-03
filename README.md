@@ -1,4 +1,4 @@
-# __PROJECT_NAME__
+# shopping-cart-demo
 
 Playwright + Cucumber (BDD) test-automation project for a single system under
 test, scaffolded via `/new-project`. See `ai/` for the guidelines this
@@ -20,8 +20,10 @@ site (see `ai/project-context.md` for details on this system under test).
 ## Run tests
 
 ```
-npm run bdd            # generate specs from features + run with Allure reporting
+npm run bdd            # generate specs from features + run everything, with Allure reporting
 npm run bdd:headed     # same, with a visible browser
+npm run test:e2e       # everything except @accessibility — what CI's Playwright job runs
+npm run test:a11y      # only @accessibility — what CI's Accessibility job runs
 ```
 
 ## View the Allure report
@@ -36,6 +38,7 @@ npm run allure:open
 ```
 npm run lint            # ESLint (eslint-plugin-playwright), catches some ai/testing-guidelines.md rules
 npm run lint:fix
+npm run typecheck        # tsc --noEmit
 npm run format           # Prettier
 npm run clean             # remove test-results/, allure-results/, allure-report/, playwright-report/, .features-gen/
 ```
@@ -44,11 +47,21 @@ A VS Code debug config for stepping through tests is in `.vscode/launch.json`.
 
 ## CI
 
-`.github/workflows/ci.yml` runs `npm run lint` and `npm run bdd` on every push
-and pull request to `main`. It only becomes active once this project has its
-own GitHub remote (e.g. after `/extract-project`) — nothing to do locally.
-For a real system under test, set `BASE_URL`/`API_BASE_URL` as repository
-variables or secrets rather than relying on the demo defaults in
+`.github/workflows/ci.yml` runs on every push and pull request to `main` or
+`acceptance`, as four jobs:
+
+- `lint` and `typecheck` — cheap static checks, run in parallel.
+- `playwright` — `npm run test:e2e` (everything except `@accessibility`).
+  Only starts once `lint`/`typecheck` are green.
+- `accessibility` — `npm run test:a11y` (only `@accessibility`). Also gated
+  on `lint`/`typecheck`.
+
+It only becomes active once this project has its own GitHub remote (e.g.
+after `/extract-project`) — nothing to do locally. See
+`ai/repo-structure.md` for the `main`/`acceptance` branch and GitHub
+Environment model; set the real `BASE_URL`/`API_BASE_URL`/`USER_EMAIL`/
+`USER_PASSWORD` per environment (Settings > Environments > test /
+acceptance) rather than relying on the demo defaults in
 `config/project.config.ts`.
 
 ## Structure

@@ -29,11 +29,16 @@ version: 1.0
 - Do NOT duplicate step logic
 - Do NOT perform heavy logic in step definitions
 
-## Linting & Formatting
+## Linting, Formatting & Typechecking
 - `npm run lint` / `npm run lint:fix` — ESLint with `eslint-plugin-playwright`,
   catches some of the rules above automatically (see `eslint.config.mjs`).
   Not every guideline here can be linted — the rest still relies on review.
+- `npm run typecheck` — `tsc --noEmit`, catches type errors without emitting
+  build output.
 - `npm run format` — Prettier, for consistent formatting.
+- CI runs `lint` and `typecheck` as their own jobs before the `playwright`/
+  `accessibility` jobs start — see `repo-structure.md` and the root
+  `README.md`'s CI section.
 
 ## Test Data
 - Use factories or fixtures

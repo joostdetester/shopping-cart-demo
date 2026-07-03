@@ -22,6 +22,11 @@ version: 1.0
 ## Tags
 - Use `@accessibility` and `@a11y` on dedicated accessibility scenarios.
 - Combine them with the existing `@ui` tag.
+- `@accessibility` also drives CI job selection: `npm run test:a11y` runs
+  only `@accessibility`-tagged scenarios (CI's `accessibility` job),
+  `npm run test:e2e` runs everything else (CI's `playwright` job) — see
+  the root `README.md`'s CI section. Any new accessibility scenario needs
+  the `@accessibility` tag to actually land in the right job.
 
 ## First iteration
 - `features/accessibility.feature` scans the homepage as a working example —
