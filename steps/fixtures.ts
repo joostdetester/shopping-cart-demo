@@ -30,6 +30,11 @@ export const test = base.extend<BddFixtures & { _allureMeta: void }>({
         await safeAllure(() => allure.severity('normal'));
       }
 
+      const suiteName = suiteNameFromFile(testInfo.file);
+      if (suiteName) {
+        await safeAllure(() => allure.suite(suiteName));
+      }
+
       await use();
     },
     { auto: true },
@@ -54,4 +59,15 @@ function normalizeTag(tag: string): string {
   const trimmed = (tag ?? '').trim();
   if (!trimmed) return '';
   return trimmed.startsWith('@') ? trimmed.slice(1) : trimmed;
+}
+
+// playwright-bdd generates one spec file per feature file, so Allure's
+// default "suite" label (the spec file's path) reads like
+// "features/shopping-cart.feature.spec.js" - turn that into "shopping cart"
+// instead: drop the features/ prefix and .feature.spec.<ext> suffix, and
+// swap hyphens for spaces.
+function suiteNameFromFile(file: string): string | undefined {
+  const normalized = file.split(/[\\/]/).join('/');
+  const match = normalized.match(/features\/(.+)\.feature\.spec\.\w+$/);
+  return match?.[1].replace(/-/g, ' ');
 }
