@@ -145,9 +145,16 @@ jobs:
       pages: write
       id-token: write
       actions: read
+    # Separate environment per branch (github-pages-main / github-pages-
+    # acceptance) so each branch keeps its own deployment history and a
+    # permanently visible URL badge in the Actions UI - GitHub Environments
+    # only shows the badge for the most recently active deployment, so
+    # sharing one environment between branches meant whichever branch
+    # deployed last silently marked the other's badge inactive (the site
+    # itself stayed correct either way, only the UI badge was affected).
     environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      name: github-pages-${{ github.ref_name }}
+      url: ${{ steps.deployment.outputs.page_url }}${{ steps.branch.outputs.dir }}/
     steps:
       - uses: actions/checkout@v7
 
