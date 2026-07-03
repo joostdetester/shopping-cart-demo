@@ -132,6 +132,9 @@ jobs:
   # URL, even though this repo is private — GitHub Pages has no "private"
   # option outside GitHub Enterprise Cloud. Only acceptable because this is
   # a demo project with no sensitive data in its test output.
+  # main and acceptance each publish their own Allure report under their own
+  # subpath (/main/, /acceptance/) on the one shared Pages site, so a run on
+  # one branch never wipes out the other branch's latest report.
   test-summary:
     name: Test Summary
     runs-on: ubuntu-latest
@@ -141,6 +144,7 @@ jobs:
       contents: read
       pages: write
       id-token: write
+      actions: read
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -167,18 +171,31 @@ jobs:
           name: allure-results-accessibility
           path: allure-results
 
+      # This branch's own report lives under site/<branch>/ - main and
+      # acceptance are the only two branches this workflow runs on.
+      - name: Determine branch output path
+        id: branch
+        run: |
+          echo "dir=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            echo "other=acceptance" >> "$GITHUB_OUTPUT"
+          else
+            echo "other=main" >> "$GITHUB_OUTPUT"
+          fi
+
       # Fills Allure's "Trend" widget, which otherwise stays empty forever —
       # each run starts from a clean allure-results/ with no run history of
       # its own. The previously deployed report's history/ is the only
-      # place that history survives between runs, so pull it back from the
-      # live Pages site before generating (best-effort: continue on 404 for
-      # the very first deploy, when there's nothing to fetch yet).
+      # place that history survives between runs, so pull it back from this
+      # branch's own subpath on the live Pages site before generating
+      # (best-effort: continue on 404 for the very first deploy of this
+      # branch, when there's nothing to fetch yet).
       - name: Fetch previous report history (for Allure trend)
         continue-on-error: true
         run: |
           mkdir -p allure-results/history
           REPO_NAME="${GITHUB_REPOSITORY#*/}"
-          PAGES_URL="https://${{ github.repository_owner }}.github.io/${REPO_NAME}/"
+          PAGES_URL="https://${{ github.repository_owner }}.github.io/${REPO_NAME}/${{ steps.branch.outputs.dir }}/"
           for f in history.json history-trend.json categories-trend.json duration-trend.json retry-trend.json; do
             curl -fsSL "${PAGES_URL}history/$f" -o "allure-results/history/$f" 2>/dev/null || true
           done
@@ -208,18 +225,52 @@ jobs:
             "buildOrder": ${{ github.run_number }},
             "buildName": "CI #${{ github.run_number }}",
             "buildUrl": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
-            "reportUrl": "$PAGES_URL",
+            "reportUrl": "${PAGES_URL}${{ steps.branch.outputs.dir }}/",
             "reportName": "Allure Report"
           }
           EOF
 
-      - run: npx allure generate allure-results --clean -o allure-report
+      - run: npx allure generate allure-results --clean -o site/${{ steps.branch.outputs.dir }}
+
+      # Recover the other branch's last-deployed report so this deploy
+      # doesn't wipe it out - actions/deploy-pages publishes the *entire*
+      # uploaded artifact as the site each time, so anything not carried
+      # forward here would be lost. Pulls the exact static files from the
+      # other branch's last successful "Test Summary" run via the Actions
+      # artifact it already uploaded to Pages, rather than trying to
+      # reconstruct them (Allure's output includes many generated filenames
+      # that aren't otherwise enumerable from outside the job).
+      - name: Recover other branch's report (avoid overwriting it)
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          OTHER="${{ steps.branch.outputs.other }}"
+          for RUN_ID in $(gh run list -R "$GITHUB_REPOSITORY" --branch "$OTHER" --workflow ci.yml --limit 5 --json databaseId --jq '.[].databaseId'); do
+            CONCLUSION=$(gh run view "$RUN_ID" -R "$GITHUB_REPOSITORY" --json jobs --jq '.jobs[] | select(.name=="Test Summary") | .conclusion')
+            if [ "$CONCLUSION" = "success" ]; then
+              mkdir -p /tmp/other-artifact "site/$OTHER"
+              gh run download "$RUN_ID" -R "$GITHUB_REPOSITORY" -n github-pages -D /tmp/other-artifact
+              tar -xf /tmp/other-artifact/artifact.tar -C "site/$OTHER"
+              break
+            fi
+          done
+
+      - name: Write Pages landing page
+        run: |
+          {
+            echo "<!doctype html><meta charset=\"utf-8\"><title>Test Reports</title>"
+            echo "<h1>Test Reports</h1><ul>"
+            [ -d site/main ] && echo "<li><a href=\"main/\">main</a></li>"
+            [ -d site/acceptance ] && echo "<li><a href=\"acceptance/\">acceptance</a></li>"
+            echo "</ul>"
+          } > site/index.html
 
       - uses: actions/configure-pages@v6
 
       - uses: actions/upload-pages-artifact@v5
         with:
-          path: allure-report
+          path: site
 
       - name: Deploy to GitHub Pages
         id: deployment
@@ -228,4 +279,4 @@ jobs:
       - name: Link report in step summary
         run: |
           echo "## Test Report" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Allure report: ${{ steps.deployment.outputs.page_url }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Allure report: ${{ steps.deployment.outputs.page_url }}${{ steps.branch.outputs.dir }}/" >> "$GITHUB_STEP_SUMMARY"
