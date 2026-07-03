@@ -3,7 +3,7 @@ title: Accessibility Testing
 description: Three-level (A/AA/AAA), severity-gated accessibility testing approach for this project's Playwright BDD UI suite.
 owner: team-qa
 tags: [testing, accessibility, ui, axe]
-version: 2.0
+version: 3.0
 ---
 
 # Accessibility Testing
@@ -69,11 +69,27 @@ This is a generic pattern, not something wired to the homepage specifically:
   identical scenarios by hand.
 
 ## Reporting
-- Every scan attaches the full axe JSON results
-  (`axe-results-<level>.json`) and a severity-labeled text summary
-  (`axe-summary-<level>.txt`) to the test report, one pair per level — so
-  AA/AAA's non-blocking Major/Minor/Cosmetic findings are still visible for
-  review even when the scenario passes.
+Every scan attaches three files per level to the test report, so findings
+are reviewable even when the scenario passes (e.g. AA/AAA's non-blocking
+Major/Minor/Cosmetic findings):
+
+- `axe-results-<level>.json` — the full raw axe-core result.
+- `axe-summary-<level>.txt` — a technical, human-readable report: for each
+  violated rule, its axe rule id, impact, description, help text and
+  `helpUrl` (a direct link to that rule's Deque University page), plus
+  every affected element's selector and axe's own `failureSummary` (which
+  already spells out the concrete fix, e.g. the exact contrast ratio
+  measured vs. required).
+- `axe-violations-<level>.png` — a full-page screenshot with a red box
+  drawn around every violating element found at that level (not just the
+  ones failing the level's gate), so a reviewer can see exactly where each
+  finding is without cross-referencing selectors by hand. Only attached
+  when there's at least one violation. Implemented with absolutely-
+  positioned overlay elements rather than styling the violating elements
+  directly — sites often reset `outline` (etc.) with their own
+  `!important` rules (frequently the very anti-pattern axe is flagging),
+  which silently wins over an inline style regardless of `!important`. A
+  freshly appended overlay has no competing rules to lose to.
 
 ## Tags
 - Use `@accessibility` and `@a11y` on dedicated accessibility scenarios.
@@ -91,6 +107,6 @@ This is a generic pattern, not something wired to the homepage specifically:
   into broad E2E flows.
 - Attach full scan output so findings can be reviewed even when the test
   passes (see Reporting above).
-- List the additional entry pages for this project's first accessibility
-  pass here (e.g. the login page, the main landing page, the primary
-  conversion flow) once known.
+- Pages currently covered (see `features/accessibility.feature`): homepage,
+  login page, product listing page, shopping cart page (with items),
+  checkout page.
