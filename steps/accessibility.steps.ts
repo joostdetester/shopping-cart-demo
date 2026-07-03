@@ -1,11 +1,13 @@
 import { expect } from '@playwright/test';
 import { Then } from './bdd';
-import { scanAccessibility } from '../pageobjects/_shared/accessibility';
+import { scanAccessibility, WcagLevel } from '../pageobjects/_shared/accessibility';
 
-Then(
-  'the page has no critical or serious accessibility violations',
-  async ({ page, $testInfo }) => {
-    const { failingViolations } = await scanAccessibility(page, $testInfo);
-    expect(failingViolations, JSON.stringify(failingViolations, null, 2)).toHaveLength(0);
-  },
-);
+const VALID_LEVELS: WcagLevel[] = ['A', 'AA', 'AAA'];
+
+Then('the page meets WCAG level {word}', async ({ page, $testInfo }, level: string) => {
+  if (!VALID_LEVELS.includes(level as WcagLevel)) {
+    throw new Error(`Unknown WCAG level "${level}" - expected one of ${VALID_LEVELS.join(', ')}`);
+  }
+  const { failingViolations } = await scanAccessibility(page, $testInfo, level as WcagLevel);
+  expect(failingViolations, JSON.stringify(failingViolations, null, 2)).toHaveLength(0);
+});
