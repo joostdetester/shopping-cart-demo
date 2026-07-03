@@ -102,6 +102,24 @@ jobs:
           path: allure-results/
           if-no-files-found: warn
 
+      # Standalone HTML accessibility report (independent of Allure) built
+      # from the per-scan records pageobjects/_shared/accessibility.ts wrote
+      # to a11y-report-data/ - see ai/accessibility-testing.md. `if: always()`
+      # so a failing scan still gets a report showing what it found.
+      - name: Build accessibility HTML report
+        if: always()
+        run: npm run a11y:report
+        env:
+          BASE_URL: ${{ secrets.BASE_URL }}
+
+      - name: Upload accessibility HTML report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: a11y-report
+          path: a11y-report/
+          if-no-files-found: warn
+
   playwright:
     name: Playwright
     runs-on: ubuntu-latest
@@ -191,6 +209,13 @@ jobs:
           name: allure-results-accessibility
           path: allure-results
 
+      - name: Download accessibility HTML report
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: a11y-report
+          path: a11y-report-download
+
       # This branch's own report lives under site/<branch>/ - main and
       # acceptance are the only two branches this workflow runs on.
       - name: Determine branch output path
@@ -252,6 +277,18 @@ jobs:
 
       - run: npx allure generate allure-results --clean -o site/${{ steps.branch.outputs.dir }}
 
+      # Publishes the standalone accessibility HTML report (see
+      # ai/accessibility-testing.md) alongside the Allure report, under this
+      # branch's own subpath - must run after `allure generate` above, since
+      # its --clean would otherwise wipe this out.
+      - name: Include accessibility HTML report in the site
+        continue-on-error: true
+        run: |
+          if [ -d a11y-report-download ] && [ -n "$(ls -A a11y-report-download 2>/dev/null)" ]; then
+            mkdir -p "site/${{ steps.branch.outputs.dir }}/a11y-report"
+            cp -r a11y-report-download/. "site/${{ steps.branch.outputs.dir }}/a11y-report/"
+          fi
+
       # Recover the other branch's last-deployed report so this deploy
       # doesn't wipe it out - actions/deploy-pages publishes the *entire*
       # uploaded artifact as the site each time, so anything not carried
@@ -287,11 +324,18 @@ jobs:
 
       - name: Write Pages landing page
         run: |
+          write_branch_link() {
+            local branch="$1"
+            [ -d "site/$branch" ] || return 0
+            echo "<li><a href=\"$branch/\">$branch</a>"
+            [ -d "site/$branch/a11y-report" ] && echo " (<a href=\"$branch/a11y-report/\">accessibility report</a>)"
+            echo "</li>"
+          }
           {
             echo "<!doctype html><meta charset=\"utf-8\"><title>Test Reports</title>"
             echo "<h1>Test Reports</h1><ul>"
-            [ -d site/main ] && echo "<li><a href=\"main/\">main</a></li>"
-            [ -d site/acceptance ] && echo "<li><a href=\"acceptance/\">acceptance</a></li>"
+            write_branch_link main
+            write_branch_link acceptance
             echo "</ul>"
           } > site/index.html
 
@@ -309,3 +353,6 @@ jobs:
         run: |
           echo "## Test Report" >> "$GITHUB_STEP_SUMMARY"
           echo "- Allure report: ${{ steps.deployment.outputs.page_url }}${{ steps.branch.outputs.dir }}/" >> "$GITHUB_STEP_SUMMARY"
+          if [ -d "site/${{ steps.branch.outputs.dir }}/a11y-report" ]; then
+            echo "- Accessibility HTML report: ${{ steps.deployment.outputs.page_url }}${{ steps.branch.outputs.dir }}/a11y-report/" >> "$GITHUB_STEP_SUMMARY"
+          fi

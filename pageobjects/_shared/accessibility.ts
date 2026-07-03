@@ -1,6 +1,16 @@
 import { Page, TestInfo } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import type { Result } from 'axe-core';
+import { randomUUID } from 'node:crypto';
+import { mkdir, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+
+// Per-scan JSON + screenshot records for the standalone HTML accessibility
+// report (see scripts/build-a11y-report.mjs) - separate from the Allure
+// attachments below, which stay scoped to their own scenario. Aggregating
+// across scenarios requires writing to a shared directory on disk, since
+// each scenario is its own Playwright test process.
+const REPORT_DATA_DIR = 'a11y-report-data';
 
 export type WcagLevel = 'A' | 'AA' | 'AAA';
 
@@ -41,7 +51,10 @@ const GATE_IMPACTS: Record<WcagLevel, AxeImpact[]> = {
 
 function impactOf(violation: { impact?: string | null }): AxeImpact {
   const impact = violation.impact;
-  return impact === 'critical' || impact === 'serious' || impact === 'moderate' || impact === 'minor'
+  return impact === 'critical' ||
+    impact === 'serious' ||
+    impact === 'moderate' ||
+    impact === 'minor'
     ? impact
     : 'critical';
 }
@@ -59,10 +72,20 @@ export async function scanAccessibility(page: Page, testInfo: TestInfo, level: W
     : 'No violations found';
   await testInfo.attach(`axe-summary-${level}.txt`, { body: summary, contentType: 'text/plain' });
 
+  let screenshotFile: string | undefined;
   if (results.violations.length) {
     const screenshot = await captureHighlightedViolations(page, results.violations);
-    await testInfo.attach(`axe-violations-${level}.png`, { body: screenshot, contentType: 'image/png' });
+    await testInfo.attach(`axe-violations-${level}.png`, {
+      body: screenshot,
+      contentType: 'image/png',
+    });
+
+    screenshotFile = `${randomUUID()}.png`;
+    await mkdir(REPORT_DATA_DIR, { recursive: true });
+    await writeFile(path.join(REPORT_DATA_DIR, screenshotFile), screenshot);
   }
+
+  await writeReportRecord(testInfo, level, page.url(), results.violations, screenshotFile);
 
   const gateImpacts = GATE_IMPACTS[level];
   const failingViolations = results.violations.filter((violation) =>
@@ -70,6 +93,42 @@ export async function scanAccessibility(page: Page, testInfo: TestInfo, level: W
   );
 
   return { violations: results.violations, failingViolations };
+}
+
+// One record per scan, written for scripts/build-a11y-report.mjs to
+// aggregate later. `page` here is derived from the scenario's title (e.g.
+// "Login page meets WCAG level A" -> "Login page") rather than passed in
+// separately, so this stays a drop-in addition to the existing
+// scanAccessibility(page, testInfo, level) signature.
+async function writeReportRecord(
+  testInfo: TestInfo,
+  level: WcagLevel,
+  url: string,
+  violations: Result[],
+  screenshotFile: string | undefined,
+): Promise<void> {
+  await mkdir(REPORT_DATA_DIR, { recursive: true });
+  const record = {
+    page: testInfo.title.replace(/\s+meets WCAG level \S+$/i, ''),
+    level,
+    url,
+    violations: violations.map((violation) => ({
+      id: violation.id,
+      impact: impactOf(violation),
+      help: violation.help,
+      description: violation.description,
+      helpUrl: violation.helpUrl,
+      nodes: violation.nodes.map((node) => ({
+        selector: targetToSelector(node.target),
+        failureSummary: node.failureSummary ?? null,
+      })),
+    })),
+    screenshot: screenshotFile ?? null,
+  };
+  await writeFile(
+    path.join(REPORT_DATA_DIR, `${randomUUID()}.json`),
+    JSON.stringify(record, null, 2),
+  );
 }
 
 // One violated rule, its technical detail (axe's own description/help/
