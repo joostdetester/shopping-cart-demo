@@ -77,6 +77,18 @@ jobs:
           USER_EMAIL: ${{ secrets.USER_EMAIL }}
           USER_PASSWORD: ${{ secrets.USER_PASSWORD }}
 
+      # Raw Allure result files (not the generated HTML report yet) — the
+      # test-summary job below merges this with the Playwright job's results
+      # into one combined Allure report. `if: always()` so a failing run
+      # still uploads whatever results it produced.
+      - name: Upload Allure results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-results-accessibility
+          path: allure-results/
+          if-no-files-found: warn
+
   playwright:
     name: Playwright
     runs-on: ubuntu-latest
@@ -101,3 +113,73 @@ jobs:
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           USER_EMAIL: ${{ secrets.USER_EMAIL }}
           USER_PASSWORD: ${{ secrets.USER_PASSWORD }}
+
+      - name: Upload Allure results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-results-playwright
+          path: allure-results/
+          if-no-files-found: warn
+
+  # Combines both jobs' raw Allure results into one report and publishes it
+  # to GitHub Pages — a single meta overview (pass/fail per suite/tag) with
+  # drill-down into every individual test, native to Allure. Runs even if
+  # accessibility/playwright failed (`if: always()`), so a failing run still
+  # gets a report showing what happened.
+  #
+  # NOTE: the published report is publicly reachable at the repo's Pages
+  # URL, even though this repo is private — GitHub Pages has no "private"
+  # option outside GitHub Enterprise Cloud. Only acceptable because this is
+  # a demo project with no sensitive data in its test output.
+  test-summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: [accessibility, playwright]
+    if: always()
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+
+      - run: npm install
+
+      - name: Download Playwright Allure results
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: allure-results-playwright
+          path: allure-results
+
+      - name: Download Accessibility Allure results
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: allure-results-accessibility
+          path: allure-results
+
+      - run: npx allure generate allure-results --clean -o allure-report
+
+      - uses: actions/configure-pages@v6
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: allure-report
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
+
+      - name: Link report in step summary
+        run: |
+          echo "## Test Report" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Allure report: ${{ steps.deployment.outputs.page_url }}" >> "$GITHUB_STEP_SUMMARY"
