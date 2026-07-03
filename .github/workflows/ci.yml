@@ -167,6 +167,52 @@ jobs:
           name: allure-results-accessibility
           path: allure-results
 
+      # Fills Allure's "Trend" widget, which otherwise stays empty forever —
+      # each run starts from a clean allure-results/ with no run history of
+      # its own. The previously deployed report's history/ is the only
+      # place that history survives between runs, so pull it back from the
+      # live Pages site before generating (best-effort: continue on 404 for
+      # the very first deploy, when there's nothing to fetch yet).
+      - name: Fetch previous report history (for Allure trend)
+        continue-on-error: true
+        run: |
+          mkdir -p allure-results/history
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+          PAGES_URL="https://${{ github.repository_owner }}.github.io/${REPO_NAME}/"
+          for f in history.json history-trend.json categories-trend.json duration-trend.json retry-trend.json; do
+            curl -fsSL "${PAGES_URL}history/$f" -o "allure-results/history/$f" 2>/dev/null || true
+          done
+
+      # Fills the "Environment" widget. Deliberately excludes BASE_URL /
+      # API_BASE_URL / USER_EMAIL / USER_PASSWORD — this report is publicly
+      # reachable (see the note on this job above), so nothing from the
+      # environment secrets belongs here, even values that happen to be
+      # harmless for today's demo SUT.
+      - name: Write Allure environment info
+        run: |
+          {
+            echo "Environment=${{ (github.event_name == 'pull_request' && github.base_ref || github.ref_name) == 'acceptance' && 'acceptance' || 'test' }}"
+            echo "Branch=${{ github.ref_name }}"
+            echo "Node.js=$(node --version)"
+          } > allure-results/environment.properties
+
+      # Fills the "Executors" widget with a link back to the CI run.
+      - name: Write Allure executor info
+        run: |
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+          PAGES_URL="https://${{ github.repository_owner }}.github.io/${REPO_NAME}/"
+          cat > allure-results/executor.json << EOF
+          {
+            "name": "GitHub Actions",
+            "type": "github",
+            "buildOrder": ${{ github.run_number }},
+            "buildName": "CI #${{ github.run_number }}",
+            "buildUrl": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+            "reportUrl": "$PAGES_URL",
+            "reportName": "Allure Report"
+          }
+          EOF
+
       - run: npx allure generate allure-results --clean -o allure-report
 
       - uses: actions/configure-pages@v6
